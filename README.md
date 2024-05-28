@@ -1,11 +1,12 @@
 # DPO_VirtueMart
 
-## DPO Pay VirtueMart plugin v1.0.0 for VirtueMart v4.2.4
+## DPO Pay VirtueMart plugin v1.0.0 for VirtueMart v4.2.0
 
 This is the DPO Pay plugin for VirtueMart. Please feel free to contact
 the [DPO Group support team](https://dpogroup.com/contact-us/) should you require any assistance.
 
 ## Installation
+
 Please navigate to the [releases page](https://github.com/DPO-Group/DPO_VirtueMart/releases), download the
 latest release (v1.0.0) and unzip. You will then be able to follow the integration guide PDF which is included in the
 zip.
