@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<!--Copyright (c) 2024 DPO Group-->
+<extension version="2.5" type="plugin" group="vmpayment" method="upgrade">
+    <name>VM Payment - DPO Pay</name>
+    <creationDate>28 May 2024</creationDate>
+    <author>DPO Group</author>
+    <authorUrl>https://dpogroup.com</authorUrl>
+    <copyright>Copyright (C) 2024 DPO Group. All rights reserved.</copyright>
+    <license>http://www.gnu.org/licenses/gpl-3.0.html GNU/GPL</license>
+    <version>1.0.0</version>
+    <description><![CDATA[<a href="https://dpogroup.com" target="_blank">DPO Pay</a> ]]></description>
+    <files>
+        <filename plugin="dpopay">dpopay.php</filename>
+        <filename>index.html</filename>
+        <filename>composer.json</filename>
+        <filename>composer.lock</filename>
+        <folder>language</folder>
+        <folder>vendor</folder>
+    </files>
+    <vmconfig>
+        <fields name="params">
+            <fieldset name="payment" addfieldpath="/plugins/vmpayment/dpopay/dpopay/fields">
+                <field name="checkConditionsCore" value="1" default="1" type="hidden"/>
+                <field type="spacer" default="VMPAYMENT_DPOPAY_FIELDS" level="level1"/>
+                <field type="text" name="dpopay_checkout_title" label="VMPAYMENT_DPOPAY_CHECKOUT_TITLE"
+                       default="DPO Pay" size="50"/>
+                <field type="text" name="dpopay_checkout_description" label="VMPAYMENT_DPOPAY_CHECKOUT_DESCRIPTION"
+                       default="You will be redirected to DPO Pay to complete the payment" size="50"/>
+                <field type="text" name="dpopay_company_token" size="50" label="VMPAYMENT_DPOPAY_COMPANY_TOKEN"
+                       default="" description="VMPAYMENT_DPOPAY_COMPANY_TOKEN_DESC"
+                       placeholder="VMPAYMENT_DPOPAY_COMPANY_TOKEN_DESC"/>
+                <field type="text" name="dpopay_default_service_type" size="50"
+                       label="VMPAYMENT_DPOPAY_DEFAULT_SERVICE_TYPE"
+                       default="" description="VMPAYMENT_DPOPAY_DEFAULT_SERVICE_TYPE_DESC"
+                       placeholder="VMPAYMENT_DPOPAY_DEFAULT_SERVICE_TYPE_DESC"/>
+                <field type="list" default="minutes" label="VMPAYMENT_DPOPAY_PTL_TYPE" name="dpopay_ptl_type"
+                       description="VMPAYMENT_DPOPAY_PTL_TYPE_DESC" size="50">
+                    <option value="minutes">VMPAYMENT_DPOPAY_PTL_TYPE_MINUTES</option>
+                    <option value="hours">VMPAYMENT_DPOPAY_PTL_TYPE_HOURS</option>
+                </field>
+                <field type="number" description="VMPAYMENT_DPOPAY_PTL_LIMIT_DESC"
+                       name="dpopay_ptl_limit" label="VMPAYMENT_DPOPAY_PTL_LIMIT"/>
+                <field name="dpopay_status_pending" type="vmorderstate" scope="com_virtuemart" default="P"
+                       label="VMPAYMENT_DPOPAY_STATUS_PENDING"
+                       description="VMPAYMENT_DPOPAY_STATUS_PENDING_EXPLAIN" size="50"/>
+                <field name="dpopay_status_success" type="vmorderstate" scope="com_virtuemart" default="C"
+                       label="VMPAYMENT_DPOPAY_STATUS_SUCCESS" description="VMPAYMENT_DPOPAY_STATUS_SUCCESS_EXPLAIN"/>
+                <field name="dpopay_status_canceled" type="vmorderstate" scope="com_virtuemart" default="X"
+                       label="VMPAYMENT_DPOPAY_STATUS_FAILED" description="VMPAYMENT_DPOPAY_STATUS_FAILED_EXPLAIN"/>
+            </fieldset>
+        </fields>
+    </vmconfig>
+</extension>
