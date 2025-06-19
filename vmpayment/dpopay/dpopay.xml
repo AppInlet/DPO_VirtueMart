@@ -1,13 +1,13 @@
 <?xml version="1.0" encoding="UTF-8" ?>
-<!--Copyright (c) 2024 DPO Group-->
+<!--Copyright (c) 2025 DPO Group-->
 <extension version="2.5" type="plugin" group="vmpayment" method="upgrade">
     <name>VM Payment - DPO Pay</name>
     <creationDate>28 May 2024</creationDate>
     <author>DPO Group</author>
     <authorUrl>https://dpogroup.com</authorUrl>
-    <copyright>Copyright (C) 2024 DPO Group. All rights reserved.</copyright>
+    <copyright>Copyright (C) 2025 DPO Group. All rights reserved.</copyright>
     <license>http://www.gnu.org/licenses/gpl-3.0.html GNU/GPL</license>
-    <version>1.0.0</version>
+    <version>1.1.0</version>
     <description><![CDATA[<a href="https://dpogroup.com" target="_blank">DPO Pay</a> ]]></description>
     <files>
         <filename plugin="dpopay">dpopay.php</filename>
@@ -16,6 +16,7 @@
         <filename>composer.lock</filename>
         <folder>language</folder>
         <folder>vendor</folder>
+        <folder>classes</folder>
     </files>
     <vmconfig>
         <fields name="params">
