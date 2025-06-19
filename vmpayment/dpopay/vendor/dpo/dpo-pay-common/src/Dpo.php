@@ -2,6 +2,9 @@
 
 namespace Dpo\Common;
 
+use Exception;
+use SimpleXMLElement;
+
 class Dpo
 {
     public static string $testApiUrl = 'https://secure.3gdirectpay.com/API/v6/';
@@ -66,6 +69,7 @@ class Dpo
      * @param array $data
      *
      * @return array|string
+     * @throws Exception
      */
     public function createToken(array $data): array|string
     {
@@ -74,14 +78,19 @@ class Dpo
         $serviceDate = date('Y/m/d H:i');
         $serviceDesc = 'test';
 
-        // Create each product service xml
-        $service .= <<<XML
+        $serviceType = $data['serviceType'];
+        if (!str_contains($serviceType, '<Service>')) {
+            // Create each product service xml
+            $service .= <<<XML
             <Service>
                 <ServiceType>{$data['serviceType']}</ServiceType>
                 <ServiceDescription>$serviceDesc</ServiceDescription>
                 <ServiceDate>$serviceDate</ServiceDate>
             </Service>
 XML;
+        } else {
+            $service = $data['serviceType'];
+        }
 
         $customerPhone             = preg_replace('/\D/', '', $data['customerPhone'] ?? '');
         $data['customerDialCode']  = $data['customerDialCode'] ?? '';
@@ -108,10 +117,11 @@ XML;
         <customerLastName>{$data['customerLastName']}</customerLastName>
         <customerAddress>{$data['customerAddress']}</customerAddress>
         <customerCity>{$data['customerCity']}</customerCity>
-        <customerPhone>{$customerPhone}</customerPhone>
+        <customerPhone>$customerPhone</customerPhone>
         <RedirectURL>{$data['redirectURL']}</RedirectURL>
         <BackURL>{$data['backURL']}</BackURL>
         <customerEmail>{$data['customerEmail']}</customerEmail>
+        <CompanyAccRef>{$data['companyAccRef']}</CompanyAccRef>
 XML;
 
         if (!empty($data['transactionSource'])) {
@@ -151,35 +161,45 @@ XML;
             );
             $response = curl_exec($curl);
             curl_close($curl);
-        } catch (\Exception $exception) {
+        } catch (Exception $exception) {
             $error .= "Curl error in createToken: " . $exception->getMessage();
         }
 
-        $xml = new \SimpleXMLElement($response);
+        try {
+            $xml = new SimpleXMLElement($response);
 
-        // Check if token creation response has been received
-        if (!in_array($xml->xpath('Result')[0]->__toString(), array_keys($this->createResponses))) {
-            return "Error in getting Transaction Token: Invalid response: " . $response;
-        } elseif ($xml->xpath('Result')[0]->__toString() === '000') {
-            $transToken        = $xml->xpath('TransToken')[0]->__toString();
-            $result            = $xml->xpath('Result')[0]->__toString();
-            $resultExplanation = $xml->xpath('ResultExplanation')[0]->__toString();
-            $transRef          = $xml->xpath('TransRef')[0]->__toString();
+            // Check if token creation response has been received
+            if (!in_array($xml->xpath('Result')[0]->__toString(), array_keys($this->createResponses))) {
+                $error .= "Error in getting Transaction Token: Invalid response: " . $response;
+            } elseif ($xml->xpath('Result')[0]->__toString() === '000') {
+                $transToken        = $xml->xpath('TransToken')[0]->__toString();
+                $result            = $xml->xpath('Result')[0]->__toString();
+                $resultExplanation = $xml->xpath('ResultExplanation')[0]->__toString();
+                $transRef          = $xml->xpath('TransRef')[0]->__toString();
 
-            return [
-                'success'           => true,
-                'result'            => $result,
-                'transToken'        => $transToken,
-                'resultExplanation' => $resultExplanation,
-                'transRef'          => $transRef,
-            ];
-        } else {
-            return [
-                'success'   => false,
-                'errorcode' => $xml->xpath('Result')[0]->__toString(),
-                'error'     => $xml->xpath('ResultExplanation')[0]->__toString() . " $error",
-            ];
+                return [
+                    'success'           => true,
+                    'result'            => $result,
+                    'transToken'        => $transToken,
+                    'resultExplanation' => $resultExplanation,
+                    'transRef'          => $transRef,
+                ];
+            } else {
+                return [
+                    'success'   => false,
+                    'errorcode' => $xml->xpath('Result')[0]->__toString(),
+                    'error'     => $xml->xpath('ResultExplanation')[0]->__toString() . " $error",
+                ];
+            }
+        } catch (Exception $exception) {
+            $error .= "Can't create SimpleXMLElement from response in createToken: " . $exception->getMessage();
         }
+
+        return [
+            'success'   => false,
+            'errorcode' => '500',
+            'error'     => $error,
+        ];
     }
 
     /**

@@ -3,73 +3,49 @@
 /**
  * dpopay.php
  *
- * Copyright (c) 2024 DPO Group
+ * Copyright (c) 2025 DPO Group
  *
  * @author      DPO Group
  * @link        https://dpogroup.com
- * @version     1.0.0
+ * @version     1.1.0
  */
 
 use Dpo\Common\Dpo;
+use DpoPay\DpoSettings;
+use DpoPay\DpoDbHelper;
+use DpoPay\DpoUtilities;
 use Joomla\CMS\Factory;
 use Joomla\Database\DatabaseInterface;
 
 defined('_JEXEC') or die('Restricted access');
 if (!class_exists('vmPSPlugin')) {
-    require(JPATH_VM_PLUGINS . DS . 'vmpsplugin.php');
+    require_once JPATH_VM_PLUGINS . DS . 'vmpsplugin.php';
 }
 
 require_once 'vendor/autoload.php';
 
 class plgVmPaymentDpopay extends vmPSPlugin
 {
+    private $dpoUtility;
+
     // Instance of class
-    function __construct(&$subject, $config)
+    public function __construct(&$subject, $config)
     {
         parent::__construct($subject, $config);
         $this->_loggable   = true;
         $this->tableFields = array_keys($this->getTableSQLFields());
         $this->_tablepkey  = 'id';
         $this->_tableId    = 'id';
-        $varsToPush        = array(
-            'dpopay_checkout_title'       => array('', 'char'),
-            'dpopay_checkout_description' => array('', 'char'),
-            'dpopay_company_token'        => array('', 'char'),
-            'dpopay_default_service_type' => array('', 'int'),
-            'dpopay_ptl_type'             => ['', 'char'],
-            'dpopay_ptl_limit'            => [90, 'int'],
-            'payment_currency'            => array(0, 'int'),
-            'debug'                       => array(0, 'int'),
-            'dpopay_status_pending'       => array('', 'char'),
-            'dpopay_status_success'       => array('', 'char'),
-            'dpopay_status_canceled'      => array('', 'char'),
-            'countries'                   => array(0, 'char'),
-            'min_amount'                  => array(0, 'int'),
-            'max_amount'                  => array(0, 'int'),
-            'cost_per_transaction'        => array(0, 'int'),
-            'cost_percent_total'          => array(0, 'int'),
-            'tax_id'                      => array(0, 'int')
-        );
+        $varsToPush        = DpoSettings::SETTINGS;
         $this->addVarsToPushCore($varsToPush, 1);
         $this->setConfigParameterable($this->_configTableFieldName, $varsToPush);
+        $this->dpoUtility = new DpoUtilities();
     }
 
-    function getTableSQLFields()
+    public function getTableSQLFields(): array
     {
-        return array(
-            'id'                           => 'int(11) UNSIGNED NOT NULL AUTO_INCREMENT',
-            'virtuemart_order_id'          => ' int(11) UNSIGNED',
-            'order_number'                 => ' char(32)',
-            'virtuemart_paymentmethod_id'  => ' mediumint(1) UNSIGNED',
-            'payment_name'                 => 'VARCHAR(75) NOT NULL DEFAULT "Dpopay"',
-            'payment_order_total'          => 'decimal(15,5) NOT NULL DEFAULT \'0.00000\'',
-            'payment_currency'             => 'char(3) ',
-            'cost_per_transaction'         => ' decimal(10,2)',
-            'cost_percent_total'           => ' decimal(10,2)',
-            'tax_id'                       => ' smallint(1)',
-            'dpopay_response'              => ' varchar(255)  ',
-            'dpopay_response_payment_date' => ' char(28)'
-        );
+        $dpoHelper = new DpoDbHelper();
+        return $dpoHelper->getTableSQLFields();
     }
 
     /**
@@ -97,12 +73,10 @@ class plgVmPaymentDpopay extends vmPSPlugin
             $return_context = $session->getId();
             $this->_debug   = $method->debug;
             $this->logInfo('plgVmConfirmedOrder order number: ' . $order['details']['BT']->order_number, 'message');
-            if (!class_exists('VirtueMartModelOrders')) {
-                require(JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER);
-            }
-            if (!class_exists('VirtueMartModelCurrency')) {
-                require(JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'currency.php');
-            }
+
+            $this->checkVmOrdersClass();
+
+            $this->checkVmCurrency();
 
             $dbValues['payment_name'] = $this->renderPluginName($method);
             if (!empty($method->payment_info)) {
@@ -114,7 +88,7 @@ class plgVmPaymentDpopay extends vmPSPlugin
             $this->getPaymentCurrency($method);
             $db = Factory::getContainer()->get(DatabaseInterface::class);
             $q  = 'SELECT `currency_code_3` FROM `#__virtuemart_currencies` WHERE `virtuemart_currency_id`="'
-                  . $db->quote($method->payment_currency) . '" ';
+                . $db->quote($method->payment_currency) . '" ';
             $db->setQuery($q);
             $paymentCurrency        = CurrencyDisplay::getInstance($method->payment_currency);
             $totalInPaymentCurrency = round(
@@ -126,9 +100,9 @@ class plgVmPaymentDpopay extends vmPSPlugin
                 2
             );
 
-            $dpopayDetails = $this->_getDpopayDetails($method);
+            $companyToken = $method->dpopay_company_token;
 
-            if (empty($dpopayDetails['companyToken'])) {
+            if (empty($companyToken)) {
                 vmInfo(JText::_('VMPAYMENT_DPOPAY_COMPANY_TOKEN_NOT_SET'));
                 $retVar = false;
             } else {
@@ -161,6 +135,7 @@ class plgVmPaymentDpopay extends vmPSPlugin
                     'customerCountry'   => $country->country_2_code,
                     'customerCity'      => $order['details']['BT']->city,
                     'customerPhone'     => $order['details']['BT']->phone_1 ?? '',
+                    'companyAccRef'     => $order['details']['BT']->order_number,
                 ];
                 $dpo         = new Dpo(false);
                 $token       = $dpo->createToken($data);
@@ -174,15 +149,13 @@ class plgVmPaymentDpopay extends vmPSPlugin
                     $values['payment_currency']            = $payCurrency;
                     $values['payment_order_total']         = $totalInPaymentCurrency;
 
-                    $verify = $dpo->verifyToken(
+                    $verify                         = $dpo->verifyToken(
                         [
                             'companyToken' => $method->dpopay_company_token,
                             'transToken'   => $token['transToken'],
                         ]
                     );
-                    if (!empty($verify) && str_starts_with($verify, '<?xml')) {
-                        $verify = new SimpleXMLElement($verify);
-                    }
+                    $verify                         = $this->dpoUtility->getSimpleXMLElement($verify);
                     $orderAmount                    = $totalInPaymentCurrency;
                     $verifyAmount                   = (float)$verify?->TransactionAmount->__toString();
                     $costPerTransaction             = $verifyAmount - $orderAmount;
@@ -199,15 +172,7 @@ class plgVmPaymentDpopay extends vmPSPlugin
         return $retVar;
     }
 
-    function _getDpopayDetails($method): array
-    {
-        return [
-            'companyToken' => $method->dpopay_company_token,
-            'serviceType'  => $method->dpopay_default_service_type,
-        ];
-    }
-
-    function plgVmgetPaymentCurrency($virtuemart_paymentmethod_id, &$paymentCurrencyId)
+    public function plgVmgetPaymentCurrency($virtuemart_paymentmethod_id, &$paymentCurrencyId)
     {
         if (!($method = $this->getVmPluginMethod($virtuemart_paymentmethod_id))) {
             return null;
@@ -240,9 +205,7 @@ class plgVmPaymentDpopay extends vmPSPlugin
 
         vmdebug('plgVmOnPaymentResponseReceived', $paymentData);
         $orderNumber = $paymentData['o_id'];
-        if (!class_exists('VirtueMartModelOrders')) {
-            require(JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER);
-        }
+        $this->checkVmOrdersClass();
 
         // Verify the integrity of the returned data
         $dpo    = new Dpo(false);
@@ -267,9 +230,7 @@ class plgVmPaymentDpopay extends vmPSPlugin
      */
     public function processVerify(string $verify, $orderNumber): void
     {
-        if (!class_exists('VirtueMartModelOrders')) {
-            require(JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER);
-        }
+        $this->checkVmOrdersClass();
 
         $virtuemartOrderId = VirtueMartModelOrders::getOrderIdByOrderNumber($orderNumber);
         $payment           = $this->getDataByOrderId($virtuemartOrderId);
@@ -280,9 +241,8 @@ class plgVmPaymentDpopay extends vmPSPlugin
         $orderModel                   = new VirtueMartModelOrders();
         $order['virtuemart_order_id'] = $virtuemartOrderId;
 
-        if (!empty($verify) && str_starts_with($verify, '<?xml')) {
-            $verify = new SimpleXMLElement($verify);
-        }
+        $verify = $this->dpoUtility->getSimpleXMLElement($verify);
+
         $result            = $verify?->Result->__toString();
         $resultExplanation = $verify?->ResultExplanation->__toString();
         $transactionAmount = $verify?->TransactionAmount->__toString();
@@ -332,9 +292,7 @@ class plgVmPaymentDpopay extends vmPSPlugin
      */
     public function plgVmOnUserPaymentCancel(): ?bool
     {
-        if (!class_exists('VirtueMartModelOrders')) {
-            require(JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . PF_ORDER);
-        }
+        $this->checkVmOrdersClass();
 
         $paymentData               = JFactory::getApplication()->input->getArray();
         $virtuemartPaymentmethodId = $paymentData['pm'];
@@ -400,7 +358,7 @@ class plgVmPaymentDpopay extends vmPSPlugin
      * Display stored payment data for an order
      * @see components/com_virtuemart/helpers/vmPSPlugin::plgVmOnShowOrderBEPayment()
      */
-    function plgVmOnShowOrderBEPayment($virtuemart_order_id, $payment_method_id)
+    public function plgVmOnShowOrderBEPayment($virtuemart_order_id, $payment_method_id)
     {
         if (!$this->selectedThisByMethodId($payment_method_id)) {
             return null;
@@ -408,22 +366,23 @@ class plgVmPaymentDpopay extends vmPSPlugin
 
         $db = Factory::getContainer()->get(DatabaseInterface::class);
         $q  = 'SELECT * FROM `' . $this->_tablename . '` '
-              . 'WHERE `virtuemart_order_id` = ' . $db->quote($virtuemart_order_id);
+            . 'WHERE `virtuemart_order_id` = ' . $db->quote($virtuemart_order_id);
         $db->setQuery($q);
         if (!($paymentTable = $db->loadObject())) {
             return '';
         }
 
         $this->getPaymentCurrency($paymentTable);
+
         $q = 'SELECT `currency_code_3` FROM `#__virtuemart_currencies` WHERE `virtuemart_currency_id`="'
-             . $db->quote($paymentTable->payment_currency) . '" ';
+            . $db->quote($paymentTable->payment_currency) . '" ';
         $db->setQuery($q);
         $html = '<table class="adminlist">' . "\n";
         $html .= $this->getHtmlHeaderBE();
         $html .= $this->getHtmlRowBE('COM_VIRTUEMART_PAYMENT_NAME', $paymentTable->payment_name);
         $code = "dpopay_response_";
         foreach ($paymentTable as $key => $value) {
-            if (substr($key, 0, strlen($code)) == $code) {
+            if (str_starts_with($key, $code)) {
                 $html .= $this->getHtmlRowBE($key, $value);
             }
         }
@@ -435,7 +394,7 @@ class plgVmPaymentDpopay extends vmPSPlugin
      * Create the table for this plugin if it does not yet exist.
      *
      */
-    function plgVmOnStoreInstallPaymentPluginTable($jplugin_id)
+    public function plgVmOnStoreInstallPaymentPluginTable($jplugin_id)
     {
         return $this->onStoreInstallPluginTable($jplugin_id);
     }
@@ -585,8 +544,8 @@ class plgVmPaymentDpopay extends vmPSPlugin
         $address     = (($cart->ST == 0) ? $cart->BT : $cart->ST);
         $amount      = $cart_prices['salesPrice'];
         $amount_cond = ($amount >= $method->min_amount && $amount <= $method->max_amount
-                        ||
-                        ($method->min_amount <= $amount && ($method->max_amount == 0)));
+            ||
+            ($method->min_amount <= $amount && ($method->max_amount == 0)));
         $countries   = array();
         if (!empty($method->countries)) {
             if (!is_array($method->countries)) {
@@ -613,6 +572,32 @@ class plgVmPaymentDpopay extends vmPSPlugin
 
     protected function getVmPluginCreateTableSQL()
     {
-        return $this->createTableSQL('Payment DPO Pay Table');
+        // Drop the table if it already exists
+        $dropQuery = "DROP TABLE IF EXISTS `" . $this->_tablename . "`;";
+
+        $createQuery = $this->createTableSQL('Payment DPO Pay Table');
+        return $dropQuery . " " . $createQuery;
     }
+
+    /**
+     * @return void
+     */
+    protected function checkVmOrdersClass(): void
+    {
+        if (!class_exists('VirtueMartModelOrders')) {
+            require_once JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'orders' . DS . 'orders.php';
+        }
+    }
+
+    /**
+     * @return void
+     */
+    protected function checkVmCurrency(): void
+    {
+        if (!class_exists('VirtueMartModelCurrency')) {
+            require_once JPATH_VM_ADMINISTRATOR . DS . 'models' . DS . 'currency.php';
+        }
+    }
+
+
 }

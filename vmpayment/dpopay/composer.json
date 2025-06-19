@@ -1,0 +1,11 @@
+{
+  "autoload": {
+    "psr-4": {
+      "Dpo\\VirtueMart\\": "src",
+      "DpoPay\\": "classes/"
+    }
+  },
+  "require": {
+    "dpo/dpo-pay-common": "v1.0.2"
+  }
+}
